@@ -2,6 +2,7 @@ export const STROKE_MODES = [
   'Outline','Fill','Cross Hatch','Sketch','Single Line','Double Line','Spiral Fill','Contour Fill','Stippling','Zigzag Fill','Custom patterns'
 ];
 export const DEFAULT_KEYBINDS = { start:'Ctrl+Enter', pause:'F8', resume:'F9', emergencyStop:'ESC', abortJob:'F10' };
+export const SUPPORTED_IMAGE_TYPES = ['image/png','image/jpeg','image/bmp','image/webp','image/tiff','image/svg+xml'];
 
 export function quantizeColor([r,g,b], tolerance = 32) {
   const step = Math.max(1, Number(tolerance));
@@ -59,4 +60,44 @@ export function buildNearestNeighborPath(points) {
     path.push(current.point);
   }
   return path;
+}
+
+export function pixelsFromImageData(imageData, { sampleStep = 1, alphaThreshold = 8 } = {}) {
+  const pixels = [];
+  const step = Math.max(1, Number(sampleStep));
+  for (let y = 0; y < imageData.height; y += step) {
+    for (let x = 0; x < imageData.width; x += step) {
+      const index = (y * imageData.width + x) * 4;
+      const alpha = imageData.data[index + 3];
+      if (alpha >= alphaThreshold) pixels.push([imageData.data[index], imageData.data[index + 1], imageData.data[index + 2]]);
+    }
+  }
+  return pixels;
+}
+
+export function buildLayerPath(imageData, targetColor, { tolerance = 32, sampleStep = 2 } = {}) {
+  const points = [];
+  const step = Math.max(1, Number(sampleStep));
+  const limit = Math.max(1, Number(tolerance));
+  for (let y = 0; y < imageData.height; y += step) {
+    for (let x = 0; x < imageData.width; x += step) {
+      const index = (y * imageData.width + x) * 4;
+      const color = [imageData.data[index], imageData.data[index + 1], imageData.data[index + 2]];
+      const distance = Math.max(...color.map((channel, i) => Math.abs(channel - targetColor[i])));
+      if (distance <= limit) points.push({ x, y });
+    }
+  }
+  return buildNearestNeighborPath(points);
+}
+
+export function thresholdSketchPixels(imageData, { threshold = 190 } = {}) {
+  const points = [];
+  for (let y = 0; y < imageData.height; y += 1) {
+    for (let x = 0; x < imageData.width; x += 1) {
+      const index = (y * imageData.width + x) * 4;
+      const brightness = luminance([imageData.data[index], imageData.data[index + 1], imageData.data[index + 2]]);
+      if (brightness < threshold && imageData.data[index + 3] > 8) points.push({ x, y });
+    }
+  }
+  return points;
 }

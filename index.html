@@ -12,15 +12,17 @@
       <p class="eyebrow">Desktop mouse-controlled drawing planner</p>
       <h1>AutoDraw AI</h1>
       <p>Convert images and sketches into guided pen, pencil, or marker strokes with color layers, calibration, previews, and safety controls.</p>
-      <div class="actions"><button id="continue">Continue to next color</button><button id="pause">Pause / Resume</button></div>
+      <div class="actions"><button id="continue">Continue to next color</button><button id="pause">Pause / Resume</button><button id="simulate">Simulate current layer</button><button id="sketch">Detect sketch lines</button><button id="export">Export .autodraw</button></div>
     </section>
     <section class="grid">
-      <article class="card"><h2>Color Optimization</h2><label>Color tolerance <input id="tolerance" type="range" min="8" max="96" value="32" /></label><label>Ignore tiny colors (%) <input id="minPercentage" type="range" min="0" max="10" value="0" /></label><label>Drawing speed <input id="speed" type="range" min="1" max="5" value="3" /></label></article>
-      <article class="card"><h2>Guided Color Layers</h2><ol id="layers" class="layers"></ol></article>
-      <article class="card"><h2>Calibration</h2><p id="calibration"></p><p>Presets: A4, Letter, Canvas, Notebook, Sketchbook, Custom.</p></article>
-      <article class="card"><h2>Stroke Generation</h2><p id="strokes"></p></article>
-      <article class="card"><h2>Safety Keybinds</h2><p id="keybinds"></p></article>
-      <article class="card"><h2>Project Workflow</h2><p>Save .autodraw projects with layers, progress, calibration, paper size, offsets, settings, and drawing order.</p></article>
+      <article class="card wide"><h2>1. Select an image</h2><label class="dropzone">Choose PNG, JPG, BMP, WEBP, TIFF, or SVG<input id="imageFile" type="file" accept="image/png,image/jpeg,image/bmp,image/webp,image/tiff,image/svg+xml" /></label><p id="status">No image selected yet. The planner is showing sample color layers.</p><canvas id="previewCanvas" width="420" height="280" aria-label="Loaded image and drawing path preview"></canvas></article>
+      <article class="card"><h2>2. Optimize colors</h2><label>Color tolerance <input id="tolerance" type="range" min="8" max="96" value="32" /></label><label>Ignore tiny colors (%) <input id="minPercentage" type="range" min="0" max="10" value="0" /></label><label>Drawing speed <input id="speed" type="range" min="1" max="5" value="3" /></label><label>Sketch darkness threshold <input id="sketchThreshold" type="range" min="60" max="245" value="190" /></label></article>
+      <article class="card"><h2>3. Calibrate paper</h2><label>Paper width (mm) <input id="paperWidth" type="number" min="10" value="250" /></label><label>Paper height (mm) <input id="paperHeight" type="number" min="10" value="200" /></label><p id="calibration"></p><p>Presets to build next: A4, Letter, Canvas, Notebook, Sketchbook, Custom.</p></article>
+      <article class="card"><h2>4. Guided color layers</h2><ol id="layers" class="layers"></ol></article>
+      <article class="card"><h2>5. Statistics</h2><p id="stats"></p><p>Use simulation before drawing to inspect travel path and likely pen lifts.</p></article>
+      <article class="card"><h2>Stroke generation</h2><p id="strokes"></p></article>
+      <article class="card"><h2>Safety keybinds</h2><p id="keybinds"></p></article>
+      <article class="card"><h2>Project workflow</h2><p>Export .autodraw projects with layers, progress, calibration, paper size, offsets, settings, and drawing order.</p></article>
     </section>
   </main>
   <script type="module" src="./src/app.js"></script>
