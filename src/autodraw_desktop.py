@@ -2,20 +2,24 @@
 from __future__ import annotations
 
 import json
+import math
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from autodraw_engine import (
+    DEFAULT_BRUSH_SIZE,
     DEFAULT_KEYBINDS,
     STROKE_MODES,
     SUPPORTED_IMAGE_TYPES,
     analyze_colors,
     build_layer_path,
+    drawing_area_from_target,
     fit_to_area,
     serialize_project,
     threshold_sketch_pixels,
 )
+from window_target import TargetWindow, discover_windows, full_screen_target
 
 class AutoDrawDesktop(tk.Tk):
     def __init__(self) -> None:
@@ -27,6 +31,10 @@ class AutoDrawDesktop(tk.Tk):
         self.pixels: list[tuple[int, int, int]] = []
         self.layers = []
         self.progress = 0
+        self.display_scale = 1.0
+        self.display_image: tk.PhotoImage | None = None
+        self.targets: list[TargetWindow] = []
+        self.selected_target: TargetWindow | None = None
         self._build_ui()
         self._bind_hotkeys()
         self.recalculate()
@@ -48,7 +56,8 @@ class AutoDrawDesktop(tk.Tk):
         toolbar = ttk.Frame(shell)
         toolbar.pack(fill="x", pady=(0, 12))
         for text, command in (
-            ("Select image", self.select_image), ("Simulate current layer", self.simulate_layer),
+            ("Select image", self.select_image), ("Refresh windows", self.refresh_windows),
+            ("Use selected window", self.use_selected_window), ("Simulate current layer", self.simulate_layer),
             ("Detect sketch lines", self.detect_sketch), ("Continue to next color", self.next_layer),
             ("Export .autodraw", self.export_project),
         ):
@@ -70,23 +79,31 @@ class AutoDrawDesktop(tk.Tk):
         self.min_percentage = tk.DoubleVar(value=0)
         self.speed = tk.DoubleVar(value=3)
         self.sketch_threshold = tk.IntVar(value=190)
+        self.brush_size = tk.IntVar(value=DEFAULT_BRUSH_SIZE)
+        self.target_margin = tk.IntVar(value=0)
         self.paper_width = tk.DoubleVar(value=250)
         self.paper_height = tk.DoubleVar(value=200)
         for label, variable, start, end in (
             ("Color tolerance", self.tolerance, 8, 96), ("Ignore tiny colors (%)", self.min_percentage, 0, 10),
-            ("Drawing speed", self.speed, 1, 5), ("Sketch darkness threshold", self.sketch_threshold, 60, 245),
+            ("Drawing speed", self.speed, 1, 5), ("Brush size / stroke width (px)", self.brush_size, 1, 40),
+            ("Sketch darkness threshold", self.sketch_threshold, 60, 245), ("Target window margin (px)", self.target_margin, 0, 80),
         ):
             ttk.Label(right, text=label).pack(anchor="w")
             ttk.Scale(right, from_=start, to=end, variable=variable, command=lambda _value: self.recalculate()).pack(fill="x", pady=(0, 10))
 
         size_frame = ttk.Frame(right, style="Card.TFrame")
         size_frame.pack(fill="x", pady=(8, 10))
-        ttk.Label(size_frame, text="Paper width (mm)").grid(row=0, column=0, sticky="w")
+        ttk.Label(size_frame, text="Target width (px)").grid(row=0, column=0, sticky="w")
         ttk.Entry(size_frame, textvariable=self.paper_width, width=8).grid(row=0, column=1, padx=4)
-        ttk.Label(size_frame, text="height (mm)").grid(row=0, column=2, sticky="w")
+        ttk.Label(size_frame, text="height (px)").grid(row=0, column=2, sticky="w")
         ttk.Entry(size_frame, textvariable=self.paper_height, width=8).grid(row=0, column=3, padx=4)
         ttk.Button(size_frame, text="Apply", command=self.recalculate).grid(row=0, column=4, padx=4)
 
+        ttk.Label(right, text="Target drawing window").pack(anchor="w")
+        self.window_choice = ttk.Combobox(right, state="readonly", width=48)
+        self.window_choice.pack(fill="x", pady=(0, 10))
+        self.target_label = ttk.Label(right, text="")
+        self.target_label.pack(anchor="w", pady=(0, 10))
         self.calibration = ttk.Label(right, text="")
         self.calibration.pack(anchor="w", pady=(0, 10))
         self.stats = ttk.Label(right, text="")
@@ -102,6 +119,26 @@ class AutoDrawDesktop(tk.Tk):
         self.bind("<F8>", lambda _event: self.status.config(text="Paused. Press F9 to resume."))
         self.bind("<F9>", lambda _event: self.status.config(text="Resumed."))
         self.bind("<F10>", lambda _event: self.stop_now())
+        self.refresh_windows()
+
+
+    def refresh_windows(self) -> None:
+        self.targets = discover_windows((self.winfo_screenwidth(), self.winfo_screenheight()))
+        self.window_choice["values"] = [target.label for target in self.targets]
+        if self.targets and not self.window_choice.get():
+            self.window_choice.current(0)
+            self.selected_target = self.targets[0]
+        self.status.config(text=f"Found {len(self.targets)} drawable target option(s). Choose one, then click Use selected window.")
+
+    def use_selected_window(self) -> None:
+        index = self.window_choice.current()
+        if index < 0 or index >= len(self.targets):
+            self.status.config(text="No target window selected; using full screen.")
+            self.selected_target = full_screen_target(self.winfo_screenwidth(), self.winfo_screenheight())
+        else:
+            self.selected_target = self.targets[index]
+            self.status.config(text=f"Target set to {self.selected_target.label}.")
+        self.recalculate()
 
     def select_image(self) -> None:
         path = filedialog.askopenfilename(
@@ -134,8 +171,12 @@ class AutoDrawDesktop(tk.Tk):
         if self.image is None:
             self.canvas.create_text(28, 28, anchor="nw", text="Select an image to start", fill="#334155", font=("Arial", 18, "bold"))
             return
-        self.canvas.create_image(0, 0, anchor="nw", image=self.image)
-        self.canvas.configure(scrollregion=(0, 0, self.image.width(), self.image.height()))
+        max_width, max_height = 760, 520
+        divisor = max(1, math.ceil(max(self.image.width() / max_width, self.image.height() / max_height, 1)))
+        self.display_image = self.image.subsample(divisor, divisor)
+        self.display_scale = 1 / divisor
+        self.canvas.create_image(0, 0, anchor="nw", image=self.display_image)
+        self.canvas.configure(scrollregion=(0, 0, self.display_image.width(), self.display_image.height()))
 
     def recalculate(self) -> None:
         sample_pixels = self.pixels[::4] if self.pixels else [(8,8,8),(42,42,42),(112,66,20),(20,40,120),(200,26,31),(236,142,36),(242,215,60),(63,160,76),(92,177,230),(245,245,245),(8,8,8),(200,26,31)]
@@ -147,9 +188,13 @@ class AutoDrawDesktop(tk.Tk):
         if self.layers:
             self.layer_list.selection_set(min(self.progress, len(self.layers) - 1))
         image_size = (self.image.width(), self.image.height()) if self.image else (320, 260)
-        fit = fit_to_area(image_size, (self.paper_width.get(), self.paper_height.get()))
-        self.calibration.config(text=f"Scale to {fit['width']} × {fit['height']} mm at {fit['scale'] * 100:.0f}%; offset {fit['x']} / {fit['y']} mm.")
-        self.stats.config(text=f"{len(self.layers)} colors • {len(sample_pixels):,} sampled pixels • ETA {sum(layer.eta_seconds for layer in self.layers)}s")
+        target_area = drawing_area_from_target(self.selected_target or full_screen_target(self.winfo_screenwidth(), self.winfo_screenheight()), self.target_margin.get())
+        self.paper_width.set(target_area["width"])
+        self.paper_height.set(target_area["height"])
+        fit = fit_to_area(image_size, (target_area["width"], target_area["height"]))
+        self.target_label.config(text=f"Draw from {target_area['x']},{target_area['y']} to {target_area['end_x']},{target_area['end_y']} in {self.selected_target.title if self.selected_target else 'Full screen'}.")
+        self.calibration.config(text=f"Image fit: {fit['width']} × {fit['height']} px at {fit['scale'] * 100:.0f}%; offset {fit['x']} / {fit['y']} px inside target.")
+        self.stats.config(text=f"{len(self.layers)} colors • brush {self.brush_size.get()}px • {len(sample_pixels):,} sampled pixels • ETA {sum(layer.eta_seconds for layer in self.layers)}s")
 
     def simulate_layer(self) -> None:
         if self.image is None or not self.layers:
@@ -157,11 +202,11 @@ class AutoDrawDesktop(tk.Tk):
             return
         self._draw_image()
         layer = self.layers[min(self.progress, len(self.layers) - 1)]
-        path = build_layer_path(self.pixels, (self.image.width(), self.image.height()), layer.color, tolerance=self.tolerance.get(), sample_step=4)
+        path = build_layer_path(self.pixels, (self.image.width(), self.image.height()), layer.color, tolerance=self.tolerance.get(), sample_step=4, brush_size=self.brush_size.get())
         if path:
             previous = path[0]
             for point in path[1:1200]:
-                self.canvas.create_line(previous["x"], previous["y"], point["x"], point["y"], fill="#fbbf24", width=1)
+                self.canvas.create_line(previous["x"] * self.display_scale, previous["y"] * self.display_scale, point["x"] * self.display_scale, point["y"] * self.display_scale, fill="#fbbf24", width=max(1, self.brush_size.get() * self.display_scale))
                 previous = point
         self.status.config(text=f"Previewing {len(path):,} optimized points for layer {self.progress + 1}.")
 
@@ -172,7 +217,8 @@ class AutoDrawDesktop(tk.Tk):
         self._draw_image()
         points = threshold_sketch_pixels(self.pixels, (self.image.width(), self.image.height()), threshold=self.sketch_threshold.get())
         for point in points[:3500]:
-            self.canvas.create_rectangle(point["x"], point["y"], point["x"], point["y"], outline="#22c55e")
+            x, y = point["x"] * self.display_scale, point["y"] * self.display_scale
+            self.canvas.create_rectangle(x, y, x + max(1, self.display_scale), y + max(1, self.display_scale), outline="#22c55e")
         self.status.config(text=f"Sketch detection kept {len(points):,} dark pixels and ignored light background.")
 
     def next_layer(self) -> None:
@@ -189,7 +235,8 @@ class AutoDrawDesktop(tk.Tk):
         path = filedialog.asksaveasfilename(title="Export project", defaultextension=".autodraw", filetypes=[("AutoDraw project", "*.autodraw")])
         if not path:
             return
-        payload = serialize_project(self.layers, self.calibration.cget("text"), self.progress)
+        target_area = drawing_area_from_target(self.selected_target or full_screen_target(self.winfo_screenwidth(), self.winfo_screenheight()), self.target_margin.get())
+        payload = serialize_project(self.layers, self.calibration.cget("text"), self.progress, brush_size=self.brush_size.get(), target_area=target_area)
         Path(path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
         self.status.config(text=f"Saved {Path(path).name}.")
 

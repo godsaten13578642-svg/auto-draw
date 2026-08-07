@@ -9,7 +9,11 @@ AutoDraw AI is a local desktop prototype for turning images or sketches into gui
 - Canvas preview of the selected image.
 - Full-color layer analysis with adjustable color tolerance and insignificant-color filtering.
 - Guided layer list with active color highlighting, image percentage, time estimates, and marker usage estimates.
-- Paper calibration inputs that scale source artwork into a physical drawing area while preserving aspect ratio.
+- Target-window selector that can discover drawable windows when OS tooling is available and falls back to the full screen.
+- Automatic from/to drawing coordinates based on the selected target window, including an optional margin.
+- Brush size / stroke width setting used in path planning and preview thickness.
+- Automatic image preview fitting so large images scale down inside the desktop display area while preserving aspect ratio.
+- Target-area calibration that scales source artwork into the selected window while preserving aspect ratio.
 - Current-layer path simulation using nearest-neighbor travel optimization.
 - Sketch-line detection preview that ignores light paper/background pixels and highlights darker marks.
 - Export of a `.autodraw` JSON project containing mode, progress, layer data, calibration, and keybinds.
@@ -29,22 +33,24 @@ If Tk is missing on Linux, install your platform package first, for example `pyt
 
 1. Run `python3 src/autodraw_desktop.py`.
 2. Click **Select image** and choose a local PNG/GIF/PPM/PGM image. Convert JPG, WEBP, TIFF, or PSD files to PNG first for this no-dependency build.
-3. Adjust **Color tolerance** to merge similar colors and reduce marker changes.
-4. Adjust **Ignore tiny colors** to remove dust, speckles, or colors too small to draw.
-5. Enter the paper/canvas width and height in millimeters, then click **Apply**.
-6. Click **Simulate current layer** to overlay the optimized travel path for the highlighted color.
-7. Click **Detect sketch lines** for pencil, ink, charcoal, marker, or notebook scans.
-8. Use **Continue to next color** after changing pens or markers.
-9. Press **Escape** or **F10** for emergency stop/abort, **F8** to pause, and **F9** to resume.
-10. Click **Export .autodraw** to save the current local project state.
+3. Click **Refresh windows**, choose the drawing program/window from **Target drawing window**, then click **Use selected window**. On Linux, install `wmctrl` for real window bounds; otherwise AutoDraw uses a full-screen fallback.
+4. Adjust **Target window margin** if you want to draw inside the selected window instead of all the way to its edges. The app displays the exact from/to coordinates it will use.
+5. Adjust **Brush size / stroke width** to match your pen, pencil, marker, or digital brush size. Larger brush sizes reduce point density and draw thicker preview paths.
+6. Adjust **Color tolerance** to merge similar colors and reduce marker changes.
+7. Adjust **Ignore tiny colors** to remove dust, speckles, or colors too small to draw.
+8. Click **Simulate current layer** to overlay the optimized travel path for the highlighted color.
+9. Click **Detect sketch lines** for pencil, ink, charcoal, marker, or notebook scans.
+10. Use **Continue to next color** after changing pens or markers.
+11. Press **Escape** or **F10** for emergency stop/abort, **F8** to pause, and **F9** to resume.
+12. Click **Export .autodraw** to save the current local project state, including target window coordinates and brush size.
 
 ## Next desktop milestones
 
-The current desktop app plans strokes and previews paths; it intentionally does not move the mouse yet. The next implementation should add OS-level mouse control, calibration preset saving, multi-monitor selection, persistent progress checkpoints, real drawing execution, custom palettes, and export of processed images, separated layers, stroke paths, previews, and time reports.
+The current desktop app plans strokes, detects target-window coordinates, and previews paths; it intentionally does not move the mouse yet. The next implementation should add OS-level mouse drawing execution, calibration preset saving, multi-monitor selection, persistent progress checkpoints, custom palettes, and export of processed images, separated layers, stroke paths, previews, and time reports.
 
 ## Development
 
 ```bash
 python3 -m unittest discover -s test
-python3 -m py_compile src/autodraw_engine.py src/autodraw_desktop.py
+python3 -m py_compile src/autodraw_engine.py src/autodraw_desktop.py src/window_target.py
 ```

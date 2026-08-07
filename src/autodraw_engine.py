@@ -11,6 +11,7 @@ STROKE_MODES = (
     "Spiral Fill", "Contour Fill", "Stippling", "Zigzag Fill", "Custom patterns",
 )
 DEFAULT_KEYBINDS = {"pause": "F8", "resume": "F9", "emergency_stop": "Escape", "abort_job": "F10"}
+DEFAULT_BRUSH_SIZE = 3
 
 @dataclass(frozen=True)
 class ColorLayer:
@@ -80,11 +81,11 @@ def nearest_neighbor_path(points: Sequence[dict[str, int]]) -> list[dict[str, in
 
 
 def build_layer_path(
-    pixels: Sequence[Sequence[int]], image_size: tuple[int, int], target_color: Sequence[int], *, tolerance: int = 32, sample_step: int = 3
+    pixels: Sequence[Sequence[int]], image_size: tuple[int, int], target_color: Sequence[int], *, tolerance: int = 32, sample_step: int = 3, brush_size: int = DEFAULT_BRUSH_SIZE
 ) -> list[dict[str, int]]:
     width, height = image_size
     points: list[dict[str, int]] = []
-    step = max(1, int(sample_step))
+    step = max(1, int(sample_step), int(brush_size))
     limit = max(1, int(tolerance))
     for y in range(0, height, step):
         for x in range(0, width, step):
@@ -104,11 +105,21 @@ def threshold_sketch_pixels(pixels: Sequence[Sequence[int]], image_size: tuple[i
     return points
 
 
-def serialize_project(layers: Sequence[ColorLayer], calibration: str, progress: int = 0) -> dict:
+def drawing_area_from_target(target: object, margin: int = 0) -> dict[str, int]:
+    x = int(getattr(target, "x", 0)) + margin
+    y = int(getattr(target, "y", 0)) + margin
+    width = max(1, int(getattr(target, "width", 1)) - margin * 2)
+    height = max(1, int(getattr(target, "height", 1)) - margin * 2)
+    return {"x": x, "y": y, "width": width, "height": height, "end_x": x + width, "end_y": y + height}
+
+
+def serialize_project(layers: Sequence[ColorLayer], calibration: str, progress: int = 0, *, brush_size: int = DEFAULT_BRUSH_SIZE, target_area: dict | None = None) -> dict:
     return {
         "version": 1,
         "mode": "desktop",
         "progress": progress,
+        "brush_size": brush_size,
+        "target_area": target_area or {},
         "calibration": calibration,
         "keybinds": DEFAULT_KEYBINDS,
         "layers": [asdict(layer) for layer in layers],
