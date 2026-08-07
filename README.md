@@ -14,6 +14,7 @@ AutoDraw AI is a local desktop prototype for turning images or sketches into gui
 - Brush size / stroke width setting used in path planning and preview thickness.
 - Automatic image preview fitting so large images scale down inside the desktop display area while preserving aspect ratio.
 - Target-area calibration that scales source artwork into the selected window while preserving aspect ratio.
+- Real **Start drawing** action that maps the current layer into the selected target window and moves the mouse there when a supported mouse backend is available.
 - Current-layer path simulation using nearest-neighbor travel optimization.
 - Sketch-line detection preview that ignores light paper/background pixels and highlights darker marks.
 - Export of a `.autodraw` JSON project containing mode, progress, layer data, calibration, and keybinds.
@@ -33,24 +34,25 @@ If Tk is missing on Linux, install your platform package first, for example `pyt
 
 1. Run `python3 src/autodraw_desktop.py`.
 2. Click **Select image** and choose a local PNG/GIF/PPM/PGM image. Convert JPG, WEBP, TIFF, or PSD files to PNG first for this no-dependency build.
-3. Click **Refresh windows**, choose the drawing program/window from **Target drawing window**, then click **Use selected window**. On Linux, install `wmctrl` for real window bounds; otherwise AutoDraw uses a full-screen fallback.
+3. Click **Refresh windows**, choose the drawing program/window from **Draw inside selected window**, then click **Use selected window**. On Linux, install `wmctrl` for real window bounds; otherwise AutoDraw uses a full-screen fallback.
 4. Adjust **Target window margin** if you want to draw inside the selected window instead of all the way to its edges. The app displays the exact from/to coordinates it will use.
 5. Adjust **Brush size / stroke width** to match your pen, pencil, marker, or digital brush size. Larger brush sizes reduce point density and draw thicker preview paths.
 6. Adjust **Color tolerance** to merge similar colors and reduce marker changes.
 7. Adjust **Ignore tiny colors** to remove dust, speckles, or colors too small to draw.
 8. Click **Simulate current layer** to overlay the optimized travel path for the highlighted color.
-9. Click **Detect sketch lines** for pencil, ink, charcoal, marker, or notebook scans.
-10. Use **Continue to next color** after changing pens or markers.
-11. Press **Escape** or **F10** for emergency stop/abort, **F8** to pause, and **F9** to resume.
-12. Click **Export .autodraw** to save the current local project state, including target window coordinates and brush size.
+9. Click **Start drawing** to move the mouse and draw that layer inside the selected window and margin. Keep your drawing app focused and ready before pressing Start.
+10. Click **Detect sketch lines** for pencil, ink, charcoal, marker, or notebook scans.
+11. Use **Continue to next color** after changing pens or markers.
+12. Press **Escape** or **F10** for emergency stop/abort, **F8** to pause, and **F9** to resume.
+13. Click **Export .autodraw** to save the current local project state, including target window coordinates and brush size.
 
 ## Next desktop milestones
 
-The current desktop app plans strokes, detects target-window coordinates, and previews paths; it intentionally does not move the mouse yet. The next implementation should add OS-level mouse drawing execution, calibration preset saving, multi-monitor selection, persistent progress checkpoints, custom palettes, and export of processed images, separated layers, stroke paths, previews, and time reports.
+The current desktop app plans strokes, detects target-window coordinates, previews paths, and can run real mouse drawing when a platform backend is available. Windows uses the native cursor API, Linux uses `xdotool`, and macOS uses `cliclick`. Next milestones include richer calibration preset saving, multi-monitor selection, persistent progress checkpoints, custom palettes, and export of processed images, separated layers, stroke paths, previews, and time reports.
 
 ## Development
 
 ```bash
 python3 -m unittest discover -s test
-python3 -m py_compile src/autodraw_engine.py src/autodraw_desktop.py src/window_target.py
+python3 -m py_compile src/autodraw_engine.py src/autodraw_desktop.py src/window_target.py src/mouse_control.py
 ```

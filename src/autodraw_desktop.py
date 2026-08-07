@@ -19,6 +19,7 @@ from autodraw_engine import (
     serialize_project,
     threshold_sketch_pixels,
 )
+from mouse_control import MouseController, map_path_to_target
 from window_target import TargetWindow, discover_windows, full_screen_target
 
 class AutoDrawDesktop(tk.Tk):
@@ -35,6 +36,10 @@ class AutoDrawDesktop(tk.Tk):
         self.display_image: tk.PhotoImage | None = None
         self.targets: list[TargetWindow] = []
         self.selected_target: TargetWindow | None = None
+        self.mouse = MouseController()
+        self.drawing_active = False
+        self.draw_path = []
+        self.draw_index = 0
         self._build_ui()
         self._bind_hotkeys()
         self.recalculate()
@@ -58,8 +63,8 @@ class AutoDrawDesktop(tk.Tk):
         for text, command in (
             ("Select image", self.select_image), ("Refresh windows", self.refresh_windows),
             ("Use selected window", self.use_selected_window), ("Simulate current layer", self.simulate_layer),
-            ("Detect sketch lines", self.detect_sketch), ("Continue to next color", self.next_layer),
-            ("Export .autodraw", self.export_project),
+            ("Start drawing", self.start_drawing), ("Detect sketch lines", self.detect_sketch),
+            ("Continue to next color", self.next_layer), ("Export .autodraw", self.export_project),
         ):
             ttk.Button(toolbar, text=text, command=command).pack(side="left", padx=(0, 8))
 
@@ -78,6 +83,7 @@ class AutoDrawDesktop(tk.Tk):
         self.tolerance = tk.IntVar(value=32)
         self.min_percentage = tk.DoubleVar(value=0)
         self.speed = tk.DoubleVar(value=3)
+        self.stroke_delay = tk.IntVar(value=5)
         self.sketch_threshold = tk.IntVar(value=190)
         self.brush_size = tk.IntVar(value=DEFAULT_BRUSH_SIZE)
         self.target_margin = tk.IntVar(value=0)
@@ -85,7 +91,8 @@ class AutoDrawDesktop(tk.Tk):
         self.paper_height = tk.DoubleVar(value=200)
         for label, variable, start, end in (
             ("Color tolerance", self.tolerance, 8, 96), ("Ignore tiny colors (%)", self.min_percentage, 0, 10),
-            ("Drawing speed", self.speed, 1, 5), ("Brush size / stroke width (px)", self.brush_size, 1, 40),
+            ("Drawing speed", self.speed, 1, 5), ("Stroke delay (ms)", self.stroke_delay, 1, 40),
+            ("Brush size / stroke width (px)", self.brush_size, 1, 40),
             ("Sketch darkness threshold", self.sketch_threshold, 60, 245), ("Target window margin (px)", self.target_margin, 0, 80),
         ):
             ttk.Label(right, text=label).pack(anchor="w")
@@ -99,7 +106,7 @@ class AutoDrawDesktop(tk.Tk):
         ttk.Entry(size_frame, textvariable=self.paper_height, width=8).grid(row=0, column=3, padx=4)
         ttk.Button(size_frame, text="Apply", command=self.recalculate).grid(row=0, column=4, padx=4)
 
-        ttk.Label(right, text="Target drawing window").pack(anchor="w")
+        ttk.Label(right, text="Draw inside selected window").pack(anchor="w")
         self.window_choice = ttk.Combobox(right, state="readonly", width=48)
         self.window_choice.pack(fill="x", pady=(0, 10))
         self.target_label = ttk.Label(right, text="")
@@ -128,7 +135,8 @@ class AutoDrawDesktop(tk.Tk):
         if self.targets and not self.window_choice.get():
             self.window_choice.current(0)
             self.selected_target = self.targets[0]
-        self.status.config(text=f"Found {len(self.targets)} drawable target option(s). Choose one, then click Use selected window.")
+        backend = self.mouse.reason if self.mouse.available else self.mouse.reason
+        self.status.config(text=f"Found {len(self.targets)} drawable target option(s). Mouse backend: {backend}. Choose one, then click Use selected window.")
 
     def use_selected_window(self) -> None:
         index = self.window_choice.current()
@@ -188,7 +196,7 @@ class AutoDrawDesktop(tk.Tk):
         if self.layers:
             self.layer_list.selection_set(min(self.progress, len(self.layers) - 1))
         image_size = (self.image.width(), self.image.height()) if self.image else (320, 260)
-        target_area = drawing_area_from_target(self.selected_target or full_screen_target(self.winfo_screenwidth(), self.winfo_screenheight()), self.target_margin.get())
+        target_area = self._current_target_area()
         self.paper_width.set(target_area["width"])
         self.paper_height.set(target_area["height"])
         fit = fit_to_area(image_size, (target_area["width"], target_area["height"]))
@@ -196,13 +204,52 @@ class AutoDrawDesktop(tk.Tk):
         self.calibration.config(text=f"Image fit: {fit['width']} × {fit['height']} px at {fit['scale'] * 100:.0f}%; offset {fit['x']} / {fit['y']} px inside target.")
         self.stats.config(text=f"{len(self.layers)} colors • brush {self.brush_size.get()}px • {len(sample_pixels):,} sampled pixels • ETA {sum(layer.eta_seconds for layer in self.layers)}s")
 
+
+    def _current_target_area(self) -> dict[str, int]:
+        return drawing_area_from_target(self.selected_target or full_screen_target(self.winfo_screenwidth(), self.winfo_screenheight()), self.target_margin.get())
+
+    def _current_layer_path(self) -> list[dict[str, int]]:
+        if self.image is None or not self.layers:
+            return []
+        layer = self.layers[min(self.progress, len(self.layers) - 1)]
+        return build_layer_path(self.pixels, (self.image.width(), self.image.height()), layer.color, tolerance=self.tolerance.get(), sample_step=4, brush_size=self.brush_size.get())
+
+    def start_drawing(self) -> None:
+        if self.image is None or not self.layers:
+            self.status.config(text="Select an image and target window before starting drawing.")
+            return
+        if not self.mouse.available:
+            self.status.config(text=f"Cannot start real drawing: {self.mouse.reason}")
+            return
+        target_area = self._current_target_area()
+        local_path = self._current_layer_path()
+        self.draw_path = map_path_to_target(local_path, (self.image.width(), self.image.height()), target_area)
+        if not self.draw_path:
+            self.status.config(text="No drawable points found for the selected layer.")
+            return
+        self.drawing_active = True
+        self.draw_index = 0
+        self.mouse.move_to(self.draw_path[0])
+        self.mouse.mouse_down()
+        self.status.config(text=f"Drawing layer {self.progress + 1} inside target from {target_area['x']},{target_area['y']} to {target_area['end_x']},{target_area['end_y']}. Press Escape to stop.")
+        self.after(self.stroke_delay.get(), self._draw_next_point)
+
+    def _draw_next_point(self) -> None:
+        if not self.drawing_active or self.draw_index >= len(self.draw_path):
+            self.mouse.mouse_up() if self.mouse.available else None
+            self.drawing_active = False
+            self.status.config(text=f"Finished drawing layer {self.progress + 1}. Change marker, then continue to the next color.")
+            return
+        self.mouse.move_to(self.draw_path[self.draw_index])
+        self.draw_index += 1
+        self.after(max(1, self.stroke_delay.get()), self._draw_next_point)
+
     def simulate_layer(self) -> None:
         if self.image is None or not self.layers:
             self.status.config(text="Select an image before simulating a layer.")
             return
         self._draw_image()
-        layer = self.layers[min(self.progress, len(self.layers) - 1)]
-        path = build_layer_path(self.pixels, (self.image.width(), self.image.height()), layer.color, tolerance=self.tolerance.get(), sample_step=4, brush_size=self.brush_size.get())
+        path = self._current_layer_path()
         if path:
             previous = path[0]
             for point in path[1:1200]:
@@ -235,12 +282,14 @@ class AutoDrawDesktop(tk.Tk):
         path = filedialog.asksaveasfilename(title="Export project", defaultextension=".autodraw", filetypes=[("AutoDraw project", "*.autodraw")])
         if not path:
             return
-        target_area = drawing_area_from_target(self.selected_target or full_screen_target(self.winfo_screenwidth(), self.winfo_screenheight()), self.target_margin.get())
+        target_area = self._current_target_area()
         payload = serialize_project(self.layers, self.calibration.cget("text"), self.progress, brush_size=self.brush_size.get(), target_area=target_area)
         Path(path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
         self.status.config(text=f"Saved {Path(path).name}.")
 
     def stop_now(self) -> None:
+        self.drawing_active = False
+        self.mouse.mouse_up() if self.mouse.available else None
         self.status.config(text="Emergency stop: drawing disabled and mouse control released.")
 
 if __name__ == "__main__":
