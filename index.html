@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AutoDraw AI</title>
+  <link rel="stylesheet" href="./src/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">Desktop mouse-controlled drawing planner</p>
+      <h1>AutoDraw AI</h1>
+      <p>Convert images and sketches into guided pen, pencil, or marker strokes with color layers, calibration, previews, and safety controls.</p>
+      <div class="actions"><button id="continue">Continue to next color</button><button id="pause">Pause / Resume</button></div>
+    </section>
+    <section class="grid">
+      <article class="card"><h2>Color Optimization</h2><label>Color tolerance <input id="tolerance" type="range" min="8" max="96" value="32" /></label><label>Ignore tiny colors (%) <input id="minPercentage" type="range" min="0" max="10" value="0" /></label><label>Drawing speed <input id="speed" type="range" min="1" max="5" value="3" /></label></article>
+      <article class="card"><h2>Guided Color Layers</h2><ol id="layers" class="layers"></ol></article>
+      <article class="card"><h2>Calibration</h2><p id="calibration"></p><p>Presets: A4, Letter, Canvas, Notebook, Sketchbook, Custom.</p></article>
+      <article class="card"><h2>Stroke Generation</h2><p id="strokes"></p></article>
+      <article class="card"><h2>Safety Keybinds</h2><p id="keybinds"></p></article>
+      <article class="card"><h2>Project Workflow</h2><p>Save .autodraw projects with layers, progress, calibration, paper size, offsets, settings, and drawing order.</p></article>
+    </section>
+  </main>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
