@@ -10,11 +10,12 @@ AutoDraw AI is a local desktop prototype for turning images or sketches into gui
 - Full-color layer analysis with adjustable color tolerance and insignificant-color filtering.
 - Guided layer list with active color highlighting, image percentage, time estimates, and marker usage estimates.
 - Target-window selector that can discover drawable windows when OS tooling is available and falls back to the full screen.
-- Automatic from/to drawing coordinates based on the selected target window, including an optional margin.
+- Snipping-tool-style area selector for dragging a custom screen rectangle and making that rectangle the drawing target.
+- Automatic from/to drawing coordinates based on the selected target window or selected screen area, including an optional margin.
 - Brush size / stroke width setting used in path planning and preview thickness.
 - Automatic image preview fitting so large images scale down inside the desktop display area while preserving aspect ratio.
 - Target-area calibration that scales source artwork into the selected window while preserving aspect ratio.
-- Real **Start drawing** action that maps the current layer into the selected target window and moves the mouse there when a supported mouse backend is available.
+- Real **Start drawing** action that activates the selected target window, maps the current layer into the selected window/area, and moves the mouse there when a supported mouse backend is available.
 - Current-layer path simulation using nearest-neighbor travel optimization.
 - Sketch-line detection preview that ignores light paper/background pixels and highlights darker marks.
 - Export of a `.autodraw` JSON project containing mode, progress, layer data, calibration, and keybinds.
@@ -35,16 +36,17 @@ If Tk is missing on Linux, install your platform package first, for example `pyt
 1. Run `python3 src/autodraw_desktop.py`.
 2. Click **Select image** and choose a local PNG/GIF/PPM/PGM image. Convert JPG, WEBP, TIFF, or PSD files to PNG first for this no-dependency build.
 3. Click **Refresh windows**, choose the drawing program/window from **Draw inside selected window**, then click **Use selected window**. On Linux, install `wmctrl` for real window bounds; otherwise AutoDraw uses a full-screen fallback.
-4. Adjust **Target window margin** if you want to draw inside the selected window instead of all the way to its edges. The app displays the exact from/to coordinates it will use.
-5. Adjust **Brush size / stroke width** to match your pen, pencil, marker, or digital brush size. Larger brush sizes reduce point density and draw thicker preview paths.
-6. Adjust **Color tolerance** to merge similar colors and reduce marker changes.
-7. Adjust **Ignore tiny colors** to remove dust, speckles, or colors too small to draw.
-8. Click **Simulate current layer** to overlay the optimized travel path for the highlighted color.
-9. Click **Start drawing** to move the mouse and draw that layer inside the selected window and margin. Keep your drawing app focused and ready before pressing Start.
-10. Click **Detect sketch lines** for pencil, ink, charcoal, marker, or notebook scans.
-11. Use **Continue to next color** after changing pens or markers.
-12. Press **Escape** or **F10** for emergency stop/abort, **F8** to pause, and **F9** to resume.
-13. Click **Export .autodraw** to save the current local project state, including target window coordinates and brush size.
+4. Or click **Select screen area** and drag a snipping-tool-style rectangle around exactly where the drawing should go.
+5. Adjust **Target window margin** if you want to draw inside the selected window/area instead of all the way to its edges. The app displays the exact from/to coordinates it will use.
+6. Adjust **Brush size / stroke width** to match your pen, pencil, marker, or digital brush size. Larger brush sizes reduce point density and draw thicker preview paths.
+7. Adjust **Color tolerance** to merge similar colors and reduce marker changes.
+8. Adjust **Ignore tiny colors** to remove dust, speckles, or colors too small to draw.
+9. Click **Simulate current layer** to overlay the optimized travel path for the highlighted color.
+10. Click **Start drawing** to activate the target app/window and draw that layer inside the selected window or selected area.
+11. Click **Detect sketch lines** for pencil, ink, charcoal, marker, or notebook scans.
+12. Use **Continue to next color** after changing pens or markers.
+13. Press **Escape** or **F10** for emergency stop/abort, **F8** to pause, and **F9** to resume.
+14. Click **Export .autodraw** to save the current local project state, including target window coordinates and brush size.
 
 ## Next desktop milestones
 

@@ -16,6 +16,7 @@ class TargetWindow:
     y: int
     width: int
     height: int
+    handle: str = ""
 
     @property
     def label(self) -> str:
@@ -50,8 +51,8 @@ def _linux_windows() -> list[TargetWindow]:
         parts = line.split(maxsplit=7)
         if len(parts) < 8:
             continue
-        _window_id, _desktop, x, y, width, height, _host, title = parts
-        windows.append(TargetWindow(title, int(x), int(y), int(width), int(height)))
+        window_id, _desktop, x, y, width, height, _host, title = parts
+        windows.append(TargetWindow(title, int(x), int(y), int(width), int(height), window_id))
     return windows
 
 
@@ -71,3 +72,21 @@ def _windows_titles(screen_size: tuple[int, int]) -> list[TargetWindow]:
 
 def _command_exists(name: str) -> bool:
     return subprocess.run(["sh", "-lc", f"command -v {name}"], text=True, capture_output=True, check=False).returncode == 0
+
+
+def activate_window(target: TargetWindow) -> tuple[bool, str]:
+    system = platform.system().lower()
+    if target.title == "Full screen" or target.title == "Selected screen area":
+        return True, "No external window activation needed."
+    if system == "linux" and target.handle and _command_exists("wmctrl"):
+        result = subprocess.run(["wmctrl", "-ia", target.handle], text=True, capture_output=True, check=False)
+        return result.returncode == 0, result.stderr.strip() or "Activated with wmctrl."
+    if system == "darwin":
+        script = f'tell application "{target.title}" to activate'
+        result = subprocess.run(["osascript", "-e", script], text=True, capture_output=True, check=False)
+        return result.returncode == 0, result.stderr.strip() or "Activated with AppleScript."
+    if system == "windows":
+        command = f'$wshell = New-Object -ComObject wscript.shell; $wshell.AppActivate("{target.title}")'
+        result = subprocess.run(["powershell", "-NoProfile", "-Command", command], text=True, capture_output=True, check=False)
+        return result.returncode == 0, result.stderr.strip() or "Activated with AppActivate."
+    return False, "No activation backend is available for this target."

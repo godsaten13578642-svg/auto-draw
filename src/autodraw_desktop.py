@@ -20,7 +20,7 @@ from autodraw_engine import (
     threshold_sketch_pixels,
 )
 from mouse_control import MouseController, map_path_to_target
-from window_target import TargetWindow, discover_windows, full_screen_target
+from window_target import TargetWindow, activate_window, discover_windows, full_screen_target
 
 class AutoDrawDesktop(tk.Tk):
     def __init__(self) -> None:
@@ -40,6 +40,9 @@ class AutoDrawDesktop(tk.Tk):
         self.drawing_active = False
         self.draw_path = []
         self.draw_index = 0
+        self.selection_overlay: tk.Toplevel | None = None
+        self.selection_start: tuple[int, int] | None = None
+        self.selection_rect: int | None = None
         self._build_ui()
         self._bind_hotkeys()
         self.recalculate()
@@ -62,7 +65,8 @@ class AutoDrawDesktop(tk.Tk):
         toolbar.pack(fill="x", pady=(0, 12))
         for text, command in (
             ("Select image", self.select_image), ("Refresh windows", self.refresh_windows),
-            ("Use selected window", self.use_selected_window), ("Simulate current layer", self.simulate_layer),
+            ("Select screen area", self.open_area_selector), ("Use selected window", self.use_selected_window),
+            ("Simulate current layer", self.simulate_layer),
             ("Start drawing", self.start_drawing), ("Detect sketch lines", self.detect_sketch),
             ("Continue to next color", self.next_layer), ("Export .autodraw", self.export_project),
         ):
@@ -136,7 +140,57 @@ class AutoDrawDesktop(tk.Tk):
             self.window_choice.current(0)
             self.selected_target = self.targets[0]
         backend = self.mouse.reason if self.mouse.available else self.mouse.reason
-        self.status.config(text=f"Found {len(self.targets)} drawable target option(s). Mouse backend: {backend}. Choose one, then click Use selected window.")
+        self.status.config(text=f"Found {len(self.targets)} drawable target option(s). Mouse backend: {backend}. Choose a window or click Select screen area.")
+
+
+    def open_area_selector(self) -> None:
+        overlay = tk.Toplevel(self)
+        overlay.attributes("-fullscreen", True)
+        overlay.attributes("-alpha", 0.28)
+        overlay.attributes("-topmost", True)
+        overlay.configure(bg="black")
+        overlay.title("Select AutoDraw area")
+        canvas = tk.Canvas(overlay, cursor="crosshair", bg="black", highlightthickness=0)
+        canvas.pack(fill="both", expand=True)
+        canvas.create_text(30, 30, anchor="nw", fill="white", font=("Arial", 18, "bold"), text="Drag to select the drawing area. Release to use it. Press Esc to cancel.")
+        self.selection_overlay = overlay
+        self.selection_start = None
+        self.selection_rect = None
+        canvas.bind("<ButtonPress-1>", self._area_press)
+        canvas.bind("<B1-Motion>", self._area_drag)
+        canvas.bind("<ButtonRelease-1>", self._area_release)
+        overlay.bind("<Escape>", lambda _event: overlay.destroy())
+
+    def _area_press(self, event: tk.Event) -> None:
+        self.selection_start = (event.x_root, event.y_root)
+        canvas = event.widget
+        self.selection_rect = canvas.create_rectangle(event.x, event.y, event.x, event.y, outline="#fbbf24", width=3)
+
+    def _area_drag(self, event: tk.Event) -> None:
+        if self.selection_start is None or self.selection_rect is None:
+            return
+        start_x, start_y = self.selection_start
+        canvas = event.widget
+        canvas.coords(self.selection_rect, start_x, start_y, event.x_root, event.y_root)
+
+    def _area_release(self, event: tk.Event) -> None:
+        if self.selection_start is None:
+            return
+        start_x, start_y = self.selection_start
+        x1, y1 = min(start_x, event.x_root), min(start_y, event.y_root)
+        x2, y2 = max(start_x, event.x_root), max(start_y, event.y_root)
+        if x2 - x1 < 5 or y2 - y1 < 5:
+            self.status.config(text="Selection was too small; target area was not changed.")
+        else:
+            self.selected_target = TargetWindow("Selected screen area", x1, y1, x2 - x1, y2 - y1)
+            self.targets = [self.selected_target, *[target for target in self.targets if target.title != "Selected screen area"]]
+            self.window_choice["values"] = [target.label for target in self.targets]
+            self.window_choice.current(0)
+            self.status.config(text=f"Selected drawing area {self.selected_target.label}.")
+            self.recalculate()
+        if self.selection_overlay is not None:
+            self.selection_overlay.destroy()
+            self.selection_overlay = None
 
     def use_selected_window(self) -> None:
         index = self.window_choice.current()
@@ -221,6 +275,7 @@ class AutoDrawDesktop(tk.Tk):
         if not self.mouse.available:
             self.status.config(text=f"Cannot start real drawing: {self.mouse.reason}")
             return
+        activated, activation_message = activate_window(self.selected_target or full_screen_target(self.winfo_screenwidth(), self.winfo_screenheight()))
         target_area = self._current_target_area()
         local_path = self._current_layer_path()
         self.draw_path = map_path_to_target(local_path, (self.image.width(), self.image.height()), target_area)
@@ -231,7 +286,8 @@ class AutoDrawDesktop(tk.Tk):
         self.draw_index = 0
         self.mouse.move_to(self.draw_path[0])
         self.mouse.mouse_down()
-        self.status.config(text=f"Drawing layer {self.progress + 1} inside target from {target_area['x']},{target_area['y']} to {target_area['end_x']},{target_area['end_y']}. Press Escape to stop.")
+        activation_note = "Window activated" if activated else f"Activation warning: {activation_message}"
+        self.status.config(text=f"{activation_note}. Drawing layer {self.progress + 1} inside target from {target_area['x']},{target_area['y']} to {target_area['end_x']},{target_area['end_y']}. Press Escape to stop.")
         self.after(self.stroke_delay.get(), self._draw_next_point)
 
     def _draw_next_point(self) -> None:
